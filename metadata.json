@@ -1,0 +1,6 @@
+{
+  "name": "BestRewardNja",
+  "description": "Secure earning, coins tracking, and withdrawal management system with rewarded ads and administrator dashboard",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
