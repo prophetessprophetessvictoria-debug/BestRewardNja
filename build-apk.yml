@@ -20,6 +20,19 @@ jobs:
           java-version: 11
           distribution: 'temurin'
 
+      - name: Download official Gradle 9.3.1 wrapper JAR
+        run: |
+          mkdir -p gradle/wrapper
+          cd gradle/wrapper
+          curl -L -o gradle-wrapper.jar "https://services.gradle.org/distributions/gradle-9.3.1-wrapper.jar"
+          # Verify file exists and is not empty
+          if [ ! -s gradle-wrapper.jar ]; then
+            echo "Failed to download gradle-wrapper.jar"
+            exit 1
+          fi
+          echo "Downloaded gradle-wrapper.jar ($(stat -f%z gradle-wrapper.jar 2>/dev/null || stat -c%s gradle-wrapper.jar) bytes)"
+          cd ../..
+
       - name: Grant execute permission to gradlew
         run: chmod +x ./gradlew
 
