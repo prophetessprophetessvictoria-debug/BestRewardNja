@@ -17,6 +17,16 @@ jobs:
           java-version: '11'
           distribution: 'temurin'
 
+      - name: Download official Gradle 9.3.1 wrapper JAR
+        run: |
+          mkdir -p gradle/wrapper
+          curl -L -o gradle/wrapper/gradle-wrapper.jar "https://services.gradle.org/distributions/gradle-9.3.1-wrapper.jar"
+          if [ ! -s gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "Failed to download gradle-wrapper.jar"
+            exit 1
+          fi
+          echo "Downloaded gradle-wrapper.jar ($(stat -c%s gradle/wrapper/gradle-wrapper.jar) bytes)"
+
       - name: Build APK
         run: chmod +x ./gradlew && ./gradlew assembleDebug
 
@@ -25,3 +35,7 @@ jobs:
         with:
           name: NaijaReward-Hub-APK
           path: app/build/outputs/apk/debug/*.apk
+          retention-days: 30
+
+      - name: List build outputs
+        run: find app/build/outputs -type f -name "*.apk" 2>/dev/null && echo "APK generated successfully" || echo "No APK files found"
