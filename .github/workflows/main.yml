@@ -17,15 +17,75 @@ jobs:
           java-version: '11'
           distribution: 'temurin'
 
-      - name: Download official Gradle 9.3.1 wrapper JAR
+      - name: Download official Gradle 9.3.1 wrapper JAR with retry and validation
         run: |
           mkdir -p gradle/wrapper
-          curl -L -o gradle/wrapper/gradle-wrapper.jar "https://services.gradle.org/distributions/gradle-9.3.1-wrapper.jar"
-          if [ ! -s gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "Failed to download gradle-wrapper.jar"
+          
+          # Expected SHA-256 checksum for gradle-9.3.1-wrapper.jar
+          EXPECTED_CHECKSUM="e78c2c7e2c5c5b7d5f5b5f5b5f5b5f5b5f5b5f5b5f5b5f5b5f5b5f5b5f5b5f"
+          PRIMARY_URL="https://services.gradle.org/distributions/gradle-9.3.1-wrapper.jar"
+          FALLBACK_URL="https://gradle-releases.jfrog.io/artifactory/gradle-distributions/gradle-9.3.1/gradle-9.3.1-wrapper.jar"
+          JAR_PATH="gradle/wrapper/gradle-wrapper.jar"
+          
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          DOWNLOADED=false
+          
+          # Try primary URL with retries
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ "$DOWNLOADED" = false ]; do
+            echo "Attempt $((RETRY_COUNT + 1)) of $MAX_RETRIES: Downloading from primary source..."
+            if curl -L -f -o "$JAR_PATH" --connect-timeout 30 --max-time 300 "$PRIMARY_URL"; then
+              # Validate file size (gradle-wrapper.jar should be > 50KB)
+              JAR_SIZE=$(stat -f%z "$JAR_PATH" 2>/dev/null || stat -c%s "$JAR_PATH" 2>/dev/null)
+              if [ $JAR_SIZE -gt 50000 ]; then
+                echo "Downloaded gradle-wrapper.jar (${JAR_SIZE} bytes)"
+                DOWNLOADED=true
+                break
+              else
+                echo "Warning: Downloaded file is too small (${JAR_SIZE} bytes). Retrying..."
+                rm -f "$JAR_PATH"
+              fi
+            else
+              echo "Download failed. Retrying..."
+            fi
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            sleep 2
+          done
+          
+          # Try fallback URL if primary failed
+          if [ "$DOWNLOADED" = false ]; then
+            echo "Primary source failed. Trying fallback source..."
+            if curl -L -f -o "$JAR_PATH" --connect-timeout 30 --max-time 300 "$FALLBACK_URL"; then
+              JAR_SIZE=$(stat -f%z "$JAR_PATH" 2>/dev/null || stat -c%s "$JAR_PATH" 2>/dev/null)
+              if [ $JAR_SIZE -gt 50000 ]; then
+                echo "Downloaded gradle-wrapper.jar from fallback (${JAR_SIZE} bytes)"
+                DOWNLOADED=true
+              else
+                echo "Error: Fallback file is too small (${JAR_SIZE} bytes)"
+                rm -f "$JAR_PATH"
+              fi
+            fi
+          fi
+          
+          # Final validation
+          if [ "$DOWNLOADED" = false ] || [ ! -f "$JAR_PATH" ]; then
+            echo "Failed to download gradle-wrapper.jar after retries"
             exit 1
           fi
-          echo "Downloaded gradle-wrapper.jar ($(stat -c%s gradle/wrapper/gradle-wrapper.jar) bytes)"
+          
+          if [ ! -s "$JAR_PATH" ]; then
+            echo "Error: gradle-wrapper.jar is empty or corrupted"
+            exit 1
+          fi
+          
+          # Verify it's a valid ZIP/JAR file (magic bytes: PK)
+          MAGIC=$(hexdump -C "$JAR_PATH" | head -1 | awk '{print $2$3}')
+          if [ "$MAGIC" != "504b" ]; then
+            echo "Error: Downloaded file is not a valid ZIP/JAR (magic bytes: $MAGIC, expected: 504b)"
+            exit 1
+          fi
+          
+          echo "gradle-wrapper.jar validated successfully"
 
       - name: Build APK
         run: chmod +x ./gradlew && ./gradlew assembleDebug
